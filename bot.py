@@ -7,7 +7,7 @@ from supabase import create_client, Client
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, MessageHandler, filters
 
-# --- НАСТРОЙКИ ---
+# --- БЕЗОПАСНЫЕ НАСТРОЙКИ (Берутся из GitHub Secrets) ---
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 ADMIN_ID = int(os.environ.get("ADMIN_ID", 0))
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
@@ -33,7 +33,6 @@ def get_main_menu():
     ]
     return InlineKeyboardMarkup(keyboard)
 
-# --- КОМАНДА /start (Всегда показывает чистое меню) ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "👋 Добро пожаловать в *Stimme VPN*!\n\n"
@@ -42,7 +41,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode='Markdown'
     )
 
-# --- ОБРАБОТКА КНОПОК ---
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -50,11 +48,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = query.data
 
     if data == 'menu_back':
-        await query.edit_message_text(
-            "👋 Главное меню:\nВыберите действие:", 
-            reply_markup=get_main_menu(),
-            parse_mode='Markdown'
-        )
+        await query.edit_message_text("👋 Главное меню:\nВыберите действие:", reply_markup=get_main_menu(), parse_mode='Markdown')
 
     elif data == 'menu_buy':
         keyboard = [
@@ -71,7 +65,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
         await query.edit_message_text("Выберите тариф и срок подписки:", reply_markup=InlineKeyboardMarkup(keyboard))
 
-    # --- ПРОВЕРКА ПОДПИСКИ ---
     elif data == 'menu_info':
         response = supabase.table('users').select('*').eq('user_id', user_id).execute()
         
@@ -87,46 +80,22 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         expire_date = datetime.datetime.fromisoformat(expire_date_str).replace(tzinfo=None)
         now = datetime.datetime.utcnow()
 
-        # Если время вышло
         if now > expire_date:
-            text = (
-                f"❌ *Подписка истекла!*\n\n"
-                f"Тариф: *{plan}*\n"
-                f"Код: `{code}` (больше не работает)\n"
-                f"Истекла: {expire_date.strftime('%d.%m.%Y')}\n\n"
-                f"Чтобы продолжить пользоваться VPN, купите новую подписку в меню."
-            )
+            text = f"❌ *Подписка истекла!*\n\nТариф: *{plan}*\nКод: `{code}` (больше не работает)\nИстекла: {expire_date.strftime('%d.%m.%Y')}\n\nКупите новую подписку в меню."
         else:
             status = "✅ Активна"
             days_left = (expire_date - now).days
-            text = (
-                f"👤 *Ваша подписка*\n\n"
-                f"Тариф: *{plan}*\n"
-                f"Код: `{code}`\n"
-                f"Статус: {status}\n"
-                f"Действует до: *{expire_date.strftime('%d.%m.%Y %H:%M')}*\n"
-                f"Осталось дней: *{days_left}*"
-            )
+            text = f"👤 *Ваша подписка*\n\nТариф: *{plan}*\nКод: `{code}`\nСтатус: {status}\nДействует до: *{expire_date.strftime('%d.%m.%Y %H:%M')}*\nОсталось дней: *{days_left}*"
 
         await query.edit_message_text(text, reply_markup=get_main_menu(), parse_mode='Markdown')
 
     elif data == 'menu_about':
-        text = (
-            "📖 *О сервисе Stimme VPN*\n\n"
-            "Наш VPN обеспечивает максимальную скорость и безопасность.\n\n"
-            "✅ Доступ к 80 серверам\n"
-            "✅ Поддержка в играх и стриминге\n"
-            "✅ Полное скрытие вашего IP-адреса\n\n"
-            "Для подключения скачайте приложение и введите код из раздела 'О подписке'."
-        )
+        text = "📖 *О сервисе Stimme VPN*\n\nНаш VPN обеспечивает максимальную скорость и безопасность.\n\n✅ Доступ к 80 серверам\n✅ Поддержка в играх и стриминге\n✅ Полное скрытие вашего IP-адреса"
         await query.edit_message_text(text, reply_markup=get_main_menu(), parse_mode='Markdown')
 
     elif data == 'menu_support':
         context.user_data['awaiting_support'] = True
-        await query.edit_message_text(
-            "🆘 *Служба поддержки*\n\nНапишите ваш вопрос одним сообщением, и мы скоро ответим!",
-            parse_mode='Markdown'
-        )
+        await query.edit_message_text("🆘 *Служба поддержки*\n\nНапишите ваш вопрос одним сообщением, и мы скоро ответим!", parse_mode='Markdown')
 
     elif data.startswith('buy_'):
         parts = data.split('_')
@@ -168,13 +137,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         expire_date_str = user_data['expire_date'].replace('Z', '+00:00')
         expire_dt = datetime.datetime.fromisoformat(expire_date_str).replace(tzinfo=None)
 
-        text = (
-            f"✅ *Оплата принята!*\n\n"
-            f"Тариф: *{user_data['plan']}*\n"
-            f"Ваш код: `{user_data['code']}`\n"
-            f"Активна до: *{expire_dt.strftime('%d.%m.%Y')}*\n\n"
-            f"📲 Скачайте приложение: {APP_DOWNLOAD_LINK}"
-        )
+        text = f"✅ *Оплата принята!*\n\nТариф: *{user_data['plan']}*\nВаш код: `{user_data['code']}`\nАктивна до: *{expire_dt.strftime('%d.%m.%Y')}*\n\n📲 Скачайте приложение: {APP_DOWNLOAD_LINK}"
         await query.edit_message_text(text, reply_markup=get_main_menu(), parse_mode='Markdown')
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -196,7 +159,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 if __name__ == '__main__':
     if not BOT_TOKEN or not SUPABASE_URL:
-        print("ОШИБКА: Нет токенов!")
+        print("ОШИБКА: Нет токенов в Secrets!")
         exit(1)
     application = Application.builder().token(BOT_TOKEN).build()
     application.add_handler(CommandHandler("start", start))
