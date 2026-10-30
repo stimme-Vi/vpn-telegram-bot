@@ -7,16 +7,15 @@ from supabase import create_client, Client
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, MessageHandler, filters
 
-# --- БЕЗОПАСНЫЕ НАСТРОЙКИ (Данные берутся только из GitHub Secrets) ---
+# --- НАСТРОЙКИ ---
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 ADMIN_ID_STR = os.environ.get("ADMIN_ID", "0")
 ADMIN_ID = int(ADMIN_ID_STR) if ADMIN_ID_STR.isdigit() else 0
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
-APP_DOWNLOAD_LINK = "https://t.me/StimmeVpn_bot"
+APP_DOWNLOAD_LINK = "https://t.me/StimmeVpn_bot" # Ссылка на скачивание приложения
 
-# Проверка: если ключей нет, бот выдаст понятную ошибку, а не сломается
 if not BOT_TOKEN or not SUPABASE_URL or not SUPABASE_KEY:
     print("ОШИБКА: Не все секреты добавлены в GitHub!")
     exit(1)
@@ -56,9 +55,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = query.from_user.id
     data = query.data
 
+    # Возврат в меню
     if data == 'menu_back':
         await query.edit_message_text("👋 Главное меню:\nВыберите действие:", reply_markup=get_main_menu(), parse_mode='Markdown')
 
+    # Меню покупки
     elif data == 'menu_buy':
         keyboard = [
             [InlineKeyboardButton("Обычный — 1 мес (300 ₽)", callback_data='buy_basic_1')],
@@ -74,6 +75,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
         await query.edit_message_text("Выберите тариф и срок подписки:", reply_markup=InlineKeyboardMarkup(keyboard))
 
+    # О подписке
     elif data == 'menu_info':
         response = supabase.table('users').select('*').eq('user_id', user_id).execute()
         
@@ -94,18 +96,33 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             status = "✅ Активна"
             days_left = (expire_date - now).days
-            text = f"👤 *Ваша подписка*\n\nТариф: *{plan}*\nКод: `{code}`\nСтатус: {status}\nДействует до: *{expire_date.strftime('%d.%m.%Y %H:%M')}*\nОсталось дней: *{days_left}*"
+            text = f"👤 *Ваша подписка*\n\nТариф: *{plan}*\nКод: `{code}`\nСтатус: {status}\nДействует до: *{expire_date.strftime('%d.%m.%Y %H:%M')}*\nОсталось дней: *{days_left}*\n\n📲 Скачайте приложение: {APP_DOWNLOAD_LINK}"
 
         await query.edit_message_text(text, reply_markup=get_main_menu(), parse_mode='Markdown')
 
+    # Информация
     elif data == 'menu_about':
-        text = "📖 *О сервисе Stimme VPN*\n\nНаш VPN обеспечивает максимальную скорость и безопасность.\n\n✅ Доступ к 80 серверам\n✅ Поддержка в играх и стриминге\n✅ Полное скрытие вашего IP-адреса"
+        text = (
+            "📖 *О сервисе Stimme VPN*\n\n"
+            "Наш VPN обеспечивает максимальную скорость и безопасность.\n\n"
+            "✅ *Тарифы:*\n"
+            "• Обычный: 50 серверов (300₽/мес)\n"
+            "• Премиум: 65 серверов (500₽/мес)\n"
+            "• Лучший: 80 серверов (800₽/мес)\n\n"
+            "✅ *Возможности:*\n"
+            "• Поддержка в играх и стриминге\n"
+            "• Полное скрытие вашего IP-адреса\n"
+            "• Высокая скорость без ограничений\n\n"
+            "Для подключения скачайте приложение и введите код из раздела 'О подписке'."
+        )
         await query.edit_message_text(text, reply_markup=get_main_menu(), parse_mode='Markdown')
 
+    # Поддержка
     elif data == 'menu_support':
         context.user_data['awaiting_support'] = True
         await query.edit_message_text("🆘 *Служба поддержки*\n\nНапишите ваш вопрос одним сообщением, и мы скоро ответим!", parse_mode='Markdown')
 
+    # Покупка
     elif data.startswith('buy_'):
         parts = data.split('_')
         plan_type, months = parts[1], int(parts[2])
@@ -139,6 +156,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
 
+    # Проверка оплаты
     elif data == 'check_payment':
         response = supabase.table('users').select('*').eq('user_id', user_id).execute()
         user_data = response.data[0]
