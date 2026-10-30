@@ -14,7 +14,7 @@ ADMIN_ID = int(ADMIN_ID_STR) if ADMIN_ID_STR.isdigit() else 0
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
-APP_DOWNLOAD_LINK = "https://t.me/StimmeVpn_bot" 
+APP_DOWNLOAD_LINK = "https://t.me/StimmeVpn_bot"
 
 if not BOT_TOKEN or not SUPABASE_URL or not SUPABASE_KEY:
     print("ОШИБКА: Не все секреты добавлены в GitHub!")
@@ -39,7 +39,7 @@ def get_main_menu():
     ]
     return InlineKeyboardMarkup(keyboard)
 
-# --- КОМАНДА /start (ВСЕГДА ВЫДАЕТ МЕНЮ) ---
+# --- КОМАНДА /start ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "👋 Добро пожаловать в *Stimme VPN*!\n\n"
@@ -84,6 +84,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         plan = user_data['plan']
         code = user_data['code']
         
+        if plan == "Обычный": devices = "2 устройства"
+        elif plan == "Премиум": devices = "до 5 устройств"
+        else: devices = "до 10 устройств"
+
         expire_date_str = user_data['expire_date'].replace('Z', '+00:00')
         expire_date = datetime.datetime.fromisoformat(expire_date_str).replace(tzinfo=None)
         now = datetime.datetime.utcnow()
@@ -93,23 +97,41 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             status = "✅ Активна"
             days_left = (expire_date - now).days
-            text = f"👤 *Ваша подписка*\n\nТариф: *{plan}*\nКод: `{code}`\nСтатус: {status}\nДействует до: *{expire_date.strftime('%d.%m.%Y %H:%M')}*\nОсталось дней: *{days_left}*\n\n📲 Скачайте приложение: {APP_DOWNLOAD_LINK}"
+            text = (
+                f"👤 *Ваша подписка*\n\n"
+                f"Тариф: *{plan}*\n"
+                f"Устройств: *{devices}*\n"
+                f"Код: `{code}`\n"
+                f"Статус: {status}\n"
+                f"Действует до: *{expire_date.strftime('%d.%m.%Y %H:%M')}*\n"
+                f"Осталось дней: *{days_left}*\n\n"
+                f"📲 Скачайте приложение: {APP_DOWNLOAD_LINK}"
+            )
 
         await query.edit_message_text(text, reply_markup=get_main_menu(), parse_mode='Markdown')
 
+    # --- ИНФОРМАЦИЯ (ПОДРОБНАЯ) ---
     elif data == 'menu_about':
         text = (
             "📖 *О сервисе Stimme VPN*\n\n"
             "Наш VPN обеспечивает максимальную скорость и безопасность.\n\n"
-            "✅ *Тарифы:*\n"
-            "• Обычный: 50 серверов (от 300₽)\n"
-            "• Премиум: 65 серверов (от 500₽)\n"
-            "• Лучший: 80 серверов (от 800₽)\n\n"
+            "🔹 *Тариф ОБЫЧНЫЙ*\n"
+            "• Серверов: 50\n"
+            "• Устройств: 2\n"
+            "• Цена: 300 ₽ / 1 мес.\n\n"
+            "🔸 *Тариф ПРЕМИУМ*\n"
+            "• Серверов: 65\n"
+            "• Устройств: до 5\n"
+            "• Цена: 500 ₽ / 1 мес.\n\n"
+            "🔥 *Тариф ЛУЧШИЙ*\n"
+            "• Серверов: 80\n"
+            "• Устройств: до 10\n"
+            "• Цена: 800 ₽ / 1 мес.\n\n"
             "✅ *Возможности:*\n"
             "• Поддержка в играх и стриминге\n"
             "• Полное скрытие вашего IP-адреса\n"
             "• Высокая скорость без ограничений\n\n"
-            "Для подключения скачайте приложение и введите код из раздела 'О подписке'."
+            "Для подключения нажмите 'Купить подписку' в главном меню."
         )
         await query.edit_message_text(text, reply_markup=get_main_menu(), parse_mode='Markdown')
 
@@ -122,11 +144,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         plan_type, months = parts[1], int(parts[2])
 
         if plan_type == 'basic':
-            plan_name, prefix, prices = "Обычный", "BASIC", {1: 300, 6: 500, 12: 800}
+            plan_name, prefix, prices, devices = "Обычный", "BASIC", {1: 300, 6: 500, 12: 800}, "2 устройства"
         elif plan_type == 'prem':
-            plan_name, prefix, prices = "Премиум", "PREM", {1: 500, 6: 700, 12: 1000}
+            plan_name, prefix, prices, devices = "Премиум", "PREM", {1: 500, 6: 700, 12: 1000}, "до 5 устройств"
         else:
-            plan_name, prefix, prices = "Лучший", "BEST", {1: 800, 6: 1000, 12: 1400}
+            plan_name, prefix, prices, devices = "Лучший", "BEST", {1: 800, 6: 1000, 12: 1400}, "до 10 устройств"
 
         price = prices[months]
         new_code = generate_unique_code(prefix)
@@ -141,7 +163,13 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             'expire_date': expire_date
         }).execute()
 
-        text = f"Вы выбрали: *{plan_name}*\nСумма: *{price} ₽*\nСрок: *{days_to_add} дней*\n\n👇 Оплатите и нажмите 'Я оплатил'."
+        text = (
+            f"Вы выбрали: *{plan_name}*\n"
+            f"Сумма: *{price} ₽*\n"
+            f"Срок: *{days_to_add} дней*\n"
+            f"Устройств: *{devices}*\n\n"
+            f"👇 Оплатите и нажмите 'Я оплатил'."
+        )
         
         keyboard = [
             [InlineKeyboardButton(f"💳 Оплатить {price} ₽", url="https://t.me/StimmeVpn_bot")],
