@@ -9,14 +9,20 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Cont
 
 # --- БЕЗОПАСНЫЕ НАСТРОЙКИ (Берутся из GitHub Secrets) ---
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
-ADMIN_ID = int(os.environ.get("ADMIN_ID", 0))
+
+# Защита от пустого ADMIN_ID (чтобы бот не падал)
+admin_id_str = os.environ.get("ADMIN_ID", "0").strip()
+ADMIN_ID = int(admin_id_str) if admin_id_str.isdigit() else 0
+
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 APP_DOWNLOAD_LINK = "https://t.me/StimmeVpn_bot"
 
+# Подключение к базе данных Supabase
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 def generate_unique_code(prefix):
+    """Генерирует уникальный код, которого еще нет в базе"""
     while True:
         random_str = ''.join(random.choices(string.ascii_uppercase + string.digits, k=5))
         code = f"{prefix}-{random_str}"
@@ -25,6 +31,7 @@ def generate_unique_code(prefix):
             return code
 
 def get_main_menu():
+    """Создает главное меню"""
     keyboard = [
         [InlineKeyboardButton("💳 Купить подписку", callback_data='menu_buy')],
         [InlineKeyboardButton("👤 О подписке", callback_data='menu_info')],
@@ -33,6 +40,7 @@ def get_main_menu():
     ]
     return InlineKeyboardMarkup(keyboard)
 
+# --- КОМАНДА /start ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "👋 Добро пожаловать в *Stimme VPN*!\n\n"
@@ -41,15 +49,18 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode='Markdown'
     )
 
+# --- ОБРАБОТКА КНОПОК ---
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     user_id = query.from_user.id
     data = query.data
 
+    # Возврат в главное меню
     if data == 'menu_back':
         await query.edit_message_text("👋 Главное меню:\nВыберите действие:", reply_markup=get_main_menu(), parse_mode='Markdown')
 
+    # Меню покупки
     elif data == 'menu_buy':
         keyboard = [
             [InlineKeyboardButton("Обычный — 1 мес (300 ₽)", callback_data='buy_basic_1')],
@@ -65,6 +76,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
         await query.edit_message_text("Выберите тариф и срок подписки:", reply_markup=InlineKeyboardMarkup(keyboard))
 
+    # Информация о подписке
     elif data == 'menu_info':
         response = supabase.table('users').select('*').eq('user_id', user_id).execute()
         
@@ -76,6 +88,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         plan = user_data['plan']
         code = user_data['code']
         
+        # Обработка даты (Supabase хранит время в UTC)
         expire_date_str = user_data['expire_date'].replace('Z', '+00:00')
         expire_date = datetime.datetime.fromisoformat(expire_date_str).replace(tzinfo=None)
         now = datetime.datetime.utcnow()
@@ -89,14 +102,17 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await query.edit_message_text(text, reply_markup=get_main_menu(), parse_mode='Markdown')
 
+    # Информация о сервисе
     elif data == 'menu_about':
         text = "📖 *О сервисе Stimme VPN*\n\nНаш VPN обеспечивает максимальную скорость и безопасность.\n\n✅ Доступ к 80 серверам\n✅ Поддержка в играх и стриминге\n✅ Полное скрытие вашего IP-адреса"
         await query.edit_message_text(text, reply_markup=get_main_menu(), parse_mode='Markdown')
 
+    # Поддержка
     elif data == 'menu_support':
         context.user_data['awaiting_support'] = True
         await query.edit_message_text("🆘 *Служба поддержки*\n\nНапишите ваш вопрос одним сообщением, и мы скоро ответим!", parse_mode='Markdown')
 
+    # Покупка тарифа
     elif data.startswith('buy_'):
         parts = data.split('_')
         plan_type, months = parts[1], int(parts[2])
@@ -111,9 +127,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         price = prices[months]
         new_code = generate_unique_code(prefix)
         
+        # Считаем дату окончания
         days_to_add = months * 30
         expire_date = (datetime.datetime.utcnow() + datetime.timedelta(days=days_to_add)).isoformat()
 
+        # Сохраняем в базу
         supabase.table('users').upsert({
             'user_id': user_id,
             'plan': plan_name,
@@ -130,6 +148,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
 
+    # Проверка оплаты
     elif data == 'check_payment':
         response = supabase.table('users').select('*').eq('user_id', user_id).execute()
         user_data = response.data[0]
@@ -140,15 +159,20 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text = f"✅ *Оплата принята!*\n\nТариф: *{user_data['plan']}*\nВаш код: `{user_data['code']}`\nАктивна до: *{expire_dt.strftime('%d.%m.%Y')}*\n\n📲 Скачайте приложение: {APP_DOWNLOAD_LINK}"
         await query.edit_message_text(text, reply_markup=get_main_menu(), parse_mode='Markdown')
 
+# --- ОБРАБОТКА ТЕКСТОВЫХ СООБЩЕНИЙ (Поддержка) ---
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     text = update.message.text
 
+    # Клиент пишет в поддержку
     if context.user_data.get('awaiting_support'):
         context.user_data['awaiting_support'] = False
         await update.message.reply_text("✅ Сообщение отправлено в поддержку!", reply_markup=get_main_menu())
-        await context.bot.send_message(chat_id=ADMIN_ID, text=f"🆘 *Поддержка*\nОт: `{user_id}`\n\n{text}", parse_mode='Markdown')
+        
+        if ADMIN_ID != 0:
+            await context.bot.send_message(chat_id=ADMIN_ID, text=f"🆘 *Поддержка*\nОт: `{user_id}`\n\n{text}", parse_mode='Markdown')
 
+    # Админ отвечает клиенту
     elif user_id == ADMIN_ID:
         try:
             target_id, reply_text = text.split(' ', 1)
@@ -157,6 +181,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except ValueError:
             await update.message.reply_text("❌ Ошибка. Напишите: ID_КЛИЕНТА Текст ответа")
 
+# --- ЗАПУСК ---
 if __name__ == '__main__':
     if not BOT_TOKEN or not SUPABASE_URL:
         print("ОШИБКА: Нет токенов в Secrets!")
